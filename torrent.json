@@ -1,0 +1,8 @@
+{
+    "announce": "http://localhost:5000/announce",
+    "infohash": "",
+    "path": "test2.jpg", 
+    "length": 980196, 
+    "piece_size": 524288,
+    "pieces": ["3a586ba9732e38c5d818660866b66bde017fde9c", "d6e25fbf67061da8c8665f061469eb72172b74e6"]
+}

@@ -1,0 +1,19 @@
+tracker
+  metainfo: tên file là info
+  - info là hashdata của toàn bộ file mà peer gửi lên
+  - path đường dẫn file ở máy peer
+  - size kích thước file
+  - count số piece của file
+ bỏ  - psize kích thước của piece (trừ piece cuối)
+  - pieces hash data của các piece
+  # pieces: tên file là hash của info và piece
+  pieces: tên file là hash của piece
+ bỏ - info
+  - piece
+  - peerid chứa id của các peer đã giữ piece
+  peers: tên file là id của peer
+  - id
+  - ip
+  - port
+peer
+  peer_id.txt chứa id kèm theo ip và port
