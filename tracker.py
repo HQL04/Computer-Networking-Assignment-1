@@ -125,7 +125,6 @@ def start_tracker():
         conn, addr = SERVER.accept()
         thread = threading.Thread(target=handle_client, args=(conn, addr))
         thread.start()
-        # if input() == "end": break
 
 if __name__ == "__main__":
     start_tracker()

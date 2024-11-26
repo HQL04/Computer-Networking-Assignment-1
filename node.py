@@ -15,7 +15,6 @@ CLIENT = sys.argv[1]
 SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # socket để kết nối tracker
 LISOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # socket để lắng nghe yêu cầu các peer
 FLAG_LISTEN = True
-# PORT = None # sẽ được định nghĩa trong main
 
 def readatline(ten_file, n):
     if n <= 0: return ""
@@ -42,8 +41,6 @@ def bind_port(host, port):
   except OSError as e:
     print(f"Error binding port {port}: {e}")
     return False
-
-# SOCKET.bind(('localhost', PORT))
 
 def natural_sort(file_list):
     convert = lambda text: int(text) if text.isdigit() else text
@@ -343,10 +340,31 @@ def downloadfile(hash, metadata, peerlist):
         
     for t in threads: 
         t.join()
-    
+
+
     with open(correct_path(metadata['path']), 'wb') as file:
         file.write(downarr)
+    # Tạo thư mục chứa file nếu chưa tồn tại
+    table_path = correct_path("table.json")
+    os.makedirs(os.path.dirname(table_path), exist_ok=True)
+
+    # Khởi tạo bảng table
+    table = {}
+
+    # Kiểm tra nếu file table.json tồn tại thì đọc nội dung
+    if os.path.exists(table_path):
+        with open(table_path, 'r') as f:  # Đọc bảng table từ file
+            table = json.load(f)
+
+    # Cập nhật bảng với hash mới và đường dẫn mới
+    table[hash] = metadata['path']
+
+    # Lưu lại bảng vào file table.json
+    with open(table_path, 'w') as f2:  # Mở lại file để ghi
+        json.dump(table, f2, indent=4)
+        
     send("",f"CONFIRM :{hash}")
+    
 
 def main():
     # Tạo folder ứng với peer

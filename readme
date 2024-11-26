@@ -17,3 +17,27 @@ tracker
   - port
 peer
   peer_id.txt chứa id kèm theo ip và port
+
+link tham khảo: https://chatgpt.com/share/674603eb-ca38-8002-95bd-622462544073
+Chưa_làm_được: 
+- làm torrent nhiều file
+- nhận magnet text (ở phía tracker)
+- thêm status vào vì chỉ có seeder mới đc tải file xuống
+- thống kê quá trình tải lên tải xuống (có thể tích hợp với Transmission)
+Yêu cầu chính cho bài tập này là:
+- Tải xuống một torrent chứa nhiều file từ nhiều peer đồng thời.
+- Tải lên một torrent chứa nhiều file cho nhiều peer đồng thời.
+- Hiển thị các thống kê hữu ích về quá trình tải xuống/tải lên, 
+cho phép chúng tôi kiểm tra thông tin về các peer, các torrent hiện tại đang sử dụng.
+Báo cáo bao gồm:
+- Xác định và mô tả các chức năng của ứng dụng.
+- Xác định các giao thức được sử dụng cho mỗi chức năng.
+Trên là nội dung của Giai đoạn 1.
+- Mô tả chi tiết từng chức năng cụ thể của ứng dụng.
+- Thiết kế chi tiết ứng dụng (kiến trúc, sơ đồ lớp, các lớp chính...).
+- Kiểm tra và đánh giá kết quả thực tế (kiểm thử chức năng cơ bản và hiệu suất).
+- Các chức năng mở rộng của hệ thống ngoài các yêu cầu đã chỉ định trong phần 2.
+- Vai trò và trách nhiệm của các thành viên.
+- Tài liệu hướng dẫn sử dụng.
+- Mã nguồn (bản mềm).
+- Tệp ứng dụng (bản mềm) đã biên dịch từ mã nguồn.
