@@ -9,12 +9,15 @@ import json
 from urllib.parse import urlparse
 import random
 import hashlib
+import requests
 
 CHUNK_SIZE = 512*1024  # size of each piece 512 KB
 CLIENT = sys.argv[1]
 SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # socket để kết nối tracker
 LISOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # socket để lắng nghe yêu cầu các peer
 FLAG_LISTEN = True
+TRACKER_URL = 'http://localhost:5000'
+PEER_ID = None
 
 def readatline(ten_file, n):
     if n <= 0: return ""
@@ -63,45 +66,31 @@ def splitfile(source, target):
             part += 1
 
 # Link the parts of the file
-def linkfile(folder, target):
-    file_list = os.listdir(folder)
-    print(file_list)
-    file_list = natural_sort(file_list)  # Sort the file list to ensure the correct order
-
-    with open(target, 'wb') as f_out:
-        for file in file_list:
-            dir = os.path.join(folder, file)
-            with open(dir, 'rb') as f_in:
-                shutil.copyfileobj(f_in, f_out)
+def mergefile( arr_name, resultfile):
+    path = correct_path('')
+    try:
+        resultfile = path + resultfile
+        with open(resultfile, 'wb') as fout:
+            for name in arr_name:
+                try:
+                    name = path + name
+                    print(name)
+                    with open(name, 'rb') as f:
+                        fout.write(f.read())
+                except FileNotFoundError: print('file not found')
+    except Exception as e: print(e)
                 
 def create_folder(folder_name):
   # Lấy đường dẫn đến thư mục hiện tại
   current_dir = os.getcwd()
-
   # Tạo đường dẫn đầy đủ đến thư mục mới
   new_folder_path = os.path.join(current_dir, folder_name)
-
   # Tạo thư mục
   try:
     os.makedirs(new_folder_path)
     print(f"Thư mục '{folder_name}' đã được tạo thành công tại: {new_folder_path}")
   except FileExistsError:
     print(f"Thư mục '{folder_name}' đã tồn tại.")
-
-def register_with_tracker(peer_id, pieces):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect(('localhost', 5555))
-        register_message = f"REGISTER {peer_id} {','.join(pieces)}"
-        s.send(register_message.encode())
-        print(s.recv(1024).decode())
-
-def request_piece_from_tracker(piece_id):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect(('localhost', 5555))
-        request_message = f"REQUEST {piece_id}"
-        s.send(request_message.encode())
-        available_peers = s.recv(1024).decode()
-        print(f"Peers with piece {piece_id}: {available_peers}")
 
 def read_metadata(file_path):
     """Đọc metadata từ file JSON"""
@@ -144,22 +133,20 @@ def correct_path(file_path):
 
 def read_and_hash(file_path):
     final_path = correct_path(file_path)
-    hasharr =[]
+    hash_str = ""
     try:
         with open(final_path, 'rb') as f:
-            while True:
-                chunk = f.read(CHUNK_SIZE)
-                if not chunk: break
+            while chunk := f.read(CHUNK_SIZE):  # Đọc từng piece
                 sha1 = hashlib.sha1()
-                sha1.update(chunk)
-                hasharr.append(sha1.hexdigest())
-        return hasharr
+                sha1.update(chunk)  # Tính SHA-1 của piece
+                hash_str += sha1.hexdigest()  # Thêm hash của piece vào chuỗi
+        return hash_str  # Trả về chuỗi hash của toàn bộ file (piece-wise)
     except FileNotFoundError:
         print("File không tồn tại")
-        return None
+        return ""
     except Exception as e:
         print(f"Lỗi khi đọc file: {e}")
-        return None
+        return ""
 
 def fileinfo(file_path):
     final_path = correct_path(file_path)
@@ -170,30 +157,35 @@ def fileinfo(file_path):
     du = file_size % CHUNK_SIZE
     manh = 1 if du > 0 else 0
     hash = read_and_hash(file_path)
-    if hash == None: 
+    if hash == "": 
         print('Hash Error')
         return None
     # Đọc độ lớn của file
     torrent = {}
-    torrent['path'] = os.path.basename(final_path)
-    torrent['size'] = file_size
-    torrent['count'] = nguyen + manh
-    # torrent['lpsize'] = du
-    torrent['pieces'] = hash
+    torrent['path']     = os.path.basename(final_path)
+    torrent['size']     = file_size
+    torrent['count']    = nguyen + manh
+    torrent['pieces']   = hash
     return torrent
 
-def upload(file_path): # transmission-create
+def upload(url,file_path): # transmission-create
     # upload gồm path, size, count, lpsize, pieces 
     torrent = fileinfo(file_path)
     # SOCKET.listen()
     if torrent == None: return False
     print(torrent)
-    send("json",torrent)
-    data = receive()
-    if data == "Need to login": return False
+    url = url + '/upload'
+    # send("json",torrent)
+    hashdata = hashlib.sha1(json.dumps(torrent).encode()).hexdigest()
+    torrent['info'] = hashdata
+    torrent['id'] = PEER_ID
+    # print(type(torrent))
+    res = requests.post(url, json = torrent).json()
+    print(res)
+    if res['message'] == "Need to login": return False
     
-    print(data)
-    data = json.loads(data)
+    # print(data)
+    data = res['data']
     path = correct_path("table.json") 
     table = {}
     if os.path.exists(path): 
@@ -204,23 +196,34 @@ def upload(file_path): # transmission-create
     with open(f'{path}', 'w') as file: json.dump(table, file, indent=4)
     return True
 
-def register():
+def register(url):
     path = correct_path("peer_id.txt")
+    ip, port = LISOCK.getsockname()
     try:
         if os.path.exists(path): # nếu file có tồn tại thì lấy thông tin từ file mà login vào hệ thống p2p
-            # print("File tồn tại")
             with open(path, 'r') as file: 
-                id = file.readline()
-                ip = file.readline()
+                id = file.readline()[:-1]
+                ip = file.readline()[:-1]
                 port = file.readline()
-            SOCKET.sendall((f'LOGIN id:{id} ip:{ip} port:{port}').encode())
-            res = receive()
+            url = url +'/login'
+            msg = {
+                "id": id,
+                "ip": ip,
+                "port": port
+            }
+            res = requests.post(url,json= msg).json()
+            # print(res['i)
+            global PEER_ID
+            PEER_ID = id
         else: # nếu không tồn tại thì gửi thông điệp và nhận lại peer_id sau đó ghi vào file peer_id.txt
-            # print("File không tồn tại")
-            ip, port = LISOCK.getsockname()
-            SOCKET.sendall( (f"REGISTER ip:{ip} port:{port}").encode() )
-            res = receive()
-            id = receive()
+            url = url +'/register'
+            msg = {
+                "ip": ip,
+                "port": port
+            }
+            res = requests.post(url,json= msg).json()
+            id = res['id']
+            PEER_ID = id
             with open(path, 'w') as file:
                 file.write(f"{id}\n")
                 file.write(f"{ip}\n")
@@ -255,58 +258,94 @@ def read_piece(file_path, piece_index):
     except Exception as e:
         print(f'lỗi tại read piece:{e}')
         
-
 def handle_peer_request(conn, addr):
+    handshake = False
     while True:
         data = conn.recv(1024).decode()  # Receive request data from peer
         # request = json.loads(data)  # Decode the JSON request
         print(f'data: {data}')
-        if data.startswith("REQUEST") :  # Check if the request type is "REQUEST"
-            hash, offset = extract_request(data)
-            print (f'hash:{type(hash)} và offset:{type(offset)}')
+        if data.startswith("HANDSHAKE") : # HANDSHAKE:abcxyz -> info
+            print("handshake")
+            info = data.split(":")[1]
+            if info.endswith("\n"): info = info.strip("\n")
+            
             path = correct_path("table.json")
-            print(f'path:{path}')
             with open(path,'r') as f: table = json.load(f)
-            print(table)
-            file_name = correct_path(table[hash])
-            print(file_name)
+            
+            if info in table: # ACCEPTED:1111111111111111111111111111111111
+                bitfield = table[info]['bitfield']
+                if bitfield.endswith("\n"): bitfield = bitfield.strip("\n")
+                conn.send((f"ACCEPTED:{bitfield}").encode()) # trả về trường bitfield giúp xác định piece nào mà peer được yêu cầu đang có
+                handshake  = True          
+            else:
+                conn.send("REJECTED".encode())           
+        elif handshake and data.startswith("REQUEST") :  # Check if the request type is "REQUEST"
+            hash, offset = extract_request(data)
+            # print (f'hash:{type(hash)} và offset:{type(offset)}')
+            path = correct_path("table.json")
+            # print(f'path:{path}')
+            with open(path,'r') as f: table = json.load(f)
+            # print(table)
+            file_name = correct_path(table[hash]['path'])
+            # print(file_name)
             piece = offset
             piece_data = read_piece(file_name, piece)
             conn.send(piece_data)
+        elif (not handshake) and data.startswith("REQUEST") :
+            conn.send("NEED TO HANDSHAKE".encode())
         else: 
             # conn.send("ERROR".encode())
+            handshake = False
             print("STOP")
             break
     
     # conn.close()
 
 def listen_for_peers():
-    LISOCK.listen()  # Allow a maximum of 5 pending connections
+    LISOCK.listen()
     print(f"Listening on port {PORT}")
     global FLAG_LISTEN
     while FLAG_LISTEN:
         conn, addr = LISOCK.accept()
         threading.Thread(target=handle_peer_request, args=(conn, addr)).start()
 
-def download(ip, port, hash, arr, lock, downarr): # arr chứa offset của các piece mà thread sẽ tải
+def write_at_offset(filename, offset, data):
+    with open(filename, 'r+b') as file:
+        file.seek(offset*CHUNK_SIZE)
+        file.write(data)
+
+def download(ip, port, hash, arr, path): # arr chứa offset của các piece mà thread sẽ tải
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((ip,port))
-    
-    for offset in arr: 
-        request = f"REQUEST info:{hash} PIECE:{offset}" 
-        s.sendall(request.encode()) 
-        response = s.recv(CHUNK_SIZE) 
-        print(f"Received piece {offset} of {hash}")
-        # print(response)
-        with lock:  # Ensure that updates to downarr are thread-safe
-            downarr[offset*CHUNK_SIZE:offset*CHUNK_SIZE + len(response)] = response  # Save the response at the correct offset
+    request = f"HANDSHAKE:{hash}" 
+    s.sendall(request.encode()) 
+    res = s.recv(CHUNK_SIZE).decode()
+    if res.startswith("REJECTED"): return # bỏ qua peer này
+    elif res.startswith("ACCEPTED"): #ACCEPTED:1111111111111111111111111111111111
+        bitfield = res.split(':')[1]
+        print(f"port:{port} & bitfield:{bitfield}")
+        for offset in arr:
+            request = f"REQUEST info:{hash} PIECE:{offset}" 
+            s.sendall(request.encode()) 
+            response = s.recv(CHUNK_SIZE) 
+            print(f"Received piece {offset} of {hash}")
+            # print(response)
+            write_at_offset(path, offset, response)
+        # with lock:  # Ensure that updates to downarr are thread-safe
+        #     downarr[offset*CHUNK_SIZE:offset*CHUNK_SIZE + len(response)] = response  # Save the response at the correct offset
     s.sendall("END".encode())
     s.close()
 
 def request(hash, metadata):
-    send("msg", f"REQUEST :{hash}")
-    peerlist = json.loads(receive())
-    print(peerlist)
+    # nhớ gửi peer_id
+    msg = {
+        "info": hash,
+        "id": PEER_ID
+    }
+    url = TRACKER_URL + '/request'
+    res = requests.get(url, json= msg).json()
+    print(res['data'])
+    peerlist = res['data']
     if(len(peerlist) == 0): return
     downloadfile(hash, metadata, peerlist)
 
@@ -316,17 +355,31 @@ def downloadfile(hash, metadata, peerlist):
     if numthread > 20: numthread = 20 # giới hạn số thread
     quo, rem = divmod( numpiece, numthread) # quo >= 1
     
+    with open(correct_path(metadata['path']), 'wb') as f:
+        f.write(b'\x00' * metadata['size'])  # Ghi n byte có giá trị 0 vào tệp tin
+    
     offset = list(range(numpiece))  # toạ mảng từ 0 đến n-1 => có n mảnh
     random.shuffle(offset)          # random chọn offset cho các peer
     random.shuffle(peerlist)        # random chọn peer để tải
     threads = [] 
     arrindex = 0
-    downarr = bytearray(metadata['size'])
-    lock = threading.Lock()
+    # downarr = bytearray(metadata['size'])
+    # lock = threading.Lock()
     for i in range (numthread):
         peer = peerlist[i] 
         ip = peer['ip'] 
         port = peer['port'] 
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((ip,port))
+        request = f"HANDSHAKE:{hash}" 
+        s.sendall(request.encode()) 
+        res = s.recv(CHUNK_SIZE).decode()
+        if res.startswith("REJECTED"): continue # bỏ qua peer này
+        elif res.startswith("ACCEPTED"): #ACCEPTED:1111111111111111111111111111111111
+            bitfield = res.split(':')[1]
+            print(f"port:{port} & bitfield:{bitfield}")
+        else: continue
+        s.close()
         
         if rem > 0 :  
             rem -= 1
@@ -334,7 +387,7 @@ def downloadfile(hash, metadata, peerlist):
         else : asize = quo
         arr = offset[arrindex : arrindex + asize]
         arrindex += asize
-        t = threading.Thread(target=download, args=(ip, port, hash, arr, lock, downarr)) 
+        t = threading.Thread(target=download, args=( ip, port, hash, arr, correct_path(metadata['path']) )) 
         threads.append(t) 
         t.start() 
         
@@ -342,8 +395,8 @@ def downloadfile(hash, metadata, peerlist):
         t.join()
 
 
-    with open(correct_path(metadata['path']), 'wb') as file:
-        file.write(downarr)
+    # with open(correct_path(metadata['path']), 'wb') as file:
+    #     file.write(downarr)
     # Tạo thư mục chứa file nếu chưa tồn tại
     table_path = correct_path("table.json")
     os.makedirs(os.path.dirname(table_path), exist_ok=True)
@@ -399,9 +452,11 @@ def main():
     while True:
         command = input(">> ")
         match command:
-            case "res": register()
+            case "read":
+                
+            case "res": register(TRACKER_URL)
             case "upload":
-                print(upload(input(f'Nhập đường dẫn file: ')))
+                print(upload(TRACKER_URL, input(f'Nhập đường dẫn file: ')))
             case "end": 
                 stop()
                 break

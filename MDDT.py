@@ -1,142 +1,104 @@
-# # import socket
-# # import threading
+import socket
+import threading
+import os
+import sys
+import hashlib
+CHUNK_SIZE = 512*1024
+CLIENT = sys.argv[1]
 
-# # # Giả sử có hàm download_piece(peer, piece_id) để tải một phần từ một peer cụ thể
-# # def download_piece(peer, piece_id):
-# #     # Kết nối tới peer để tải piece
-# #     print(f"Downloading piece {piece_id} from {peer}")
-# #     # Thực hiện kết nối và nhận dữ liệu...
+def correct_path(file_path):
+    current_file_path = os.path.dirname(os.path.abspath(__file__)) #lấy thư mục cha của thư mục chạy file code
+    finalpath = f"{current_file_path}/{CLIENT}/{file_path}" #lấy path theo client
+    return finalpath
 
-# # # Tải xuống từ nhiều peers cùng lúc
-# # def download_from_multiple_peers(piece_id, peers):
-# #     threads = []
-# #     for peer in peers:
-# #         thread = threading.Thread(target=download_piece, args=(peer, piece_id))
-# #         threads.append(thread)
-# #         thread.start()
-# #     for thread in threads:
-# #         thread.join()
+def splitfile(source, target):
+    target = correct_path(target)[:-1]
+    print(target)
+    global arrname
+    with open(source, 'rb') as f_in:
+        part = 0
+        while True:
+            data = f_in.read(CHUNK_SIZE)
+            if not data: break
+            newfile = f"{target}/{arrname[part]}"  # Add the file extension
+            with open(newfile, 'wb') as f_out: f_out.write(data)
+            part += 1
 
-# # # Giả sử nhận được danh sách peers từ tracker
-# # peers = ["peer1", "peer2", "peer3"]
-# # download_from_multiple_peers("1", peers)
+def mergefile( arr_name, resultfile):
+    path = correct_path('')
+    try:
+        resultfile = path + resultfile
+        with open(resultfile, 'wb') as fout:
+            for name in arr_name:
+                try:
+                    name = path + name
+                    print(name)
+                    with open(name, 'rb') as f:
+                        fout.write(f.read())
+                except FileNotFoundError: print('file not found')
+    except Exception as e: print(e)
+        
+# test = 'test2.jpg'
+# folder = ''
+# arrname = ['abc','xyz']
+# # splitfile( test, folder)
+# target = 'abcxyz.jpg'
+# mergefile(arrname, target)
+def generate_bitfield(num_pieces, downloaded_pieces):
+    """
+    Tạo bitfield cho peer, với số lượng pieces tổng cộng và danh sách các pieces đã tải.
+    
+    :param num_pieces: Tổng số lượng pieces của tệp.
+    :param downloaded_pieces: Danh sách các chỉ số của các pieces đã tải (ví dụ [0, 2, 5] có nghĩa là peer đã tải pieces 0, 2, 5).
+    :return: Bitfield dưới dạng một chuỗi nhị phân.
+    """
+    # Khởi tạo bitfield với tất cả các bit là 0
+    bitfield = ['0'] * num_pieces
+    
+    # Đặt bit tương ứng với các pieces đã tải thành 1
+    for piece in downloaded_pieces:
+        if 0 <= piece < num_pieces:
+            bitfield[piece] = '1'
+    
+    # Chuyển đổi list bitfield thành một chuỗi nhị phân
+    return ''.join(bitfield)
 
-# import os
-# import sys
-# import hashlib
-# CHUNK_SIZE = 512*1024
-# # # Đường dẫn đến file
-# # file_path = sys.argv[1]
+def save_bitfield_to_file(bitfield, filename):
+    """
+    Lưu bitfield vào một tệp.
+    
+    :param bitfield: Chuỗi nhị phân đại diện cho bitfield.
+    :param filename: Tên tệp để lưu bitfield.
+    """
+    with open(filename, 'wb') as f:
+        # Convert bitfield string to bytes
+        byte_array = int(bitfield, 2).to_bytes((len(bitfield) + 7) // 8, byteorder='big')
+        f.write(byte_array)
 
-# def read_and_hash(file_path):
-#     final_path = file_path
-#     hasharr =[]
-#     try:
-#         with open(final_path, 'rb') as f:
-#             while True:
-#                 chunk = f.read(CHUNK_SIZE)
-#                 if not chunk: break
-#                 sha1 = hashlib.sha1()
-#                 sha1.update(chunk)
-#                 hasharr.append(sha1.hexdigest())
-#         return hasharr
-#     except FileNotFoundError:
-#         print("File không tồn tại")
-#         return None
-#     except Exception as e:
-#         print(f"Lỗi khi đọc file: {e}")
-#         return None
+# Ví dụ sử dụng
+# num_pieces = 10  # Ví dụ tệp có 10 pieces
+# downloaded_pieces = [0, 2, 5]  # Peer đã tải các pieces 0, 2, 5
+# bitfield = generate_bitfield(num_pieces, downloaded_pieces)
+# print("Bitfield:", bitfield)
 
-# def fileinfo(file_path):
-#     if not os.path.exists(file_path): return None
-#     file_size = os.path.getsize(file_path)
-#     nguyen =  file_size//(CHUNK_SIZE)
-#     du = file_size % CHUNK_SIZE
-#     manh = 1 if du > 0 else 0
-#     hash = read_and_hash(file_path)
-#     if hash == None: 
-#         print('Hash Error')
-#         return None
-#     # Đọc độ lớn của file
-#     torrent = {}
-#     torrent['path'] = os.path.basename(file_path)
-#     torrent['size'] = file_size
-#     torrent['count'] = nguyen + manh
-#     torrent['lpsize'] = du
-#     torrent['pieces'] = hash
-#     return torrent
+# Lưu bitfield vào file
+# save_bitfield_to_file(bitfield, "peer_bitfield.dat")
 
-# peerlist = [{'id': '0', 'ip': '127.0.0.1', 'port': 10},
-#             {'id': '1', 'ip': '127.0.0.1', 'port': 20},
-#             {'id': '2', 'ip': '127.0.0.1', 'port': 30}
-#             ]
-# # threads = [] 
-# for peer in peerlist: 
-#     ip = peer['ip'] 
-#     port = peer['port'] 
-#     print(f'{ip} and {port}')
-#     # arr = [0, 1, 2] # Cần thay đổi để phù hợp với các offset cần tải thực tế 
-#     # t = threading.Thread(target=download, args=(ip, port, arr)) 
-#     # threads.append(t) 
-#     # t.start() 
-# # print(fileinfo(input("nhập file_path: ")))
-# # import hashlib
-# # TEST = "3a586ba9732e38c5d818660866b66bde017fde9c"
-# # def hash_file_sha1(filename):
-# #   """Tính hash SHA-1 của một file
+def create_empty_file(filename, n):
+    """
+    Tạo một tệp tin rỗng với kích thước n byte.
+    
+    :param filename: Tên tệp tin cần tạo.
+    :param n: Kích thước của tệp tin (tính bằng byte).
+    """
+    with open(filename, 'wb') as f:
+        f.write(b'\x00' * n)  # Ghi n byte có giá trị 0 vào tệp tin
 
-# #   Args:
-# #     filename: Đường dẫn đến file cần tính hash
-
-# #   Returns:
-# #     Chuỗi hash SHA-1
-# #   """
-
-# #   # Mở file trong chế độ đọc nhị phân
-# #   with open(filename, 'rb') as f:
-# #     # Tạo một đối tượng hash SHA-1
-# #     sha1 = hashlib.sha1()
-# #     i = 1
-# #     # Đọc từng khối dữ liệu từ file và cập nhật vào đối tượng hash
-# #     while chunk := f.read(CHUNK_SIZE):
-# #       print(i)
-# #       sha1.update(chunk)
-# #       i = i+1
-
-# #   # Trả về chuỗi hash
-# #   return sha1.hexdigest()
-
-# # # Ví dụ sử dụng hàm
-# # filename = "splitted_data/test2part_1.jpg"  # Thay thế bằng đường dẫn đến file của bạn
-# # hash_value = hash_file_sha1(filename)
-# # print(hash_value == TEST)
-# # print("SHA-1 hash:", hash_value)
-
-# # import numpy as np
-
-# # arr = np.zeros(2000, dtype=str)
-# # arr[1999] = "hello world"
-# # print(arr[1999])
-
-# # arr = ["" for _ in range(2000)]
-# # arr[1999] = "hello world1"
-# # print(arr[1999])
-def extract_hash_and_offset(request_str):
-    # Split the string by space
-    parts = request_str.split(":")
-
-    # Extract hash and offset based on the position in the split string
-    print(parts)
-    if len(parts) == 3:
-        hash_value = parts[1].split(" ")[0]  # Extract the hash value after "info:"
-        offset_value = int(parts[2] ) # Extract the offset after "PIECE:"
-        return hash_value, offset_value
-    else:
-        return None, None  # Return None if the string doesn't match the expected format
-
-# Example usage
-request_str = "REQUEST info:abcdef123456 PIECE:10"
-hash_value, offset_value = extract_hash_and_offset(request_str)
-
-print("Hash:", hash_value)
-print("Offset:", offset_value)
+# Ví dụ sử dụng
+create_empty_file('empty_file.txt', 1024)  # Tạo tệp tin rỗng có kích thước 1024 byte
+def write_at_offset(filename, offset, data):
+    with open(filename, 'r+b') as file:
+        file.seek(offset)
+        file.write(data)
+        
+write_at_offset('empty_file.txt', 5, b'\x01') 

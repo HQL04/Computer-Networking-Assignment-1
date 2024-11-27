@@ -4,17 +4,35 @@ import json
 import hashlib
 import uuid
 import os
+from flask import Flask, request, jsonify
+import requests
+
+app = Flask(__name__)
+@app.route('/hello', methods=['GET'])
+def hello():
+    return "Hello, world!", 200
+
+@app.route('/data', methods=['POST'])
+def receive_data():
+    data = request.json  # Lấy JSON từ request
+    print(f"Received JSON data: {data}")
+    return jsonify({"message": "Data received!"}), 200
 
 active_peers = []
 CHUNKSIZE = 512*1024
+SERVER = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+flag = True
+
+
 def handle_client(conn, addr): 
     ip, port = addr 
     login = False 
     peer_id = None 
-    while True: 
+    global flag
+    while flag: 
         try: 
             data = b''
-            while True:
+            while flag:
                 part = conn.recv(CHUNKSIZE)
                 if not part:  # Nếu không còn dữ liệu để nhận, thoát vòng lặp
                     break
@@ -113,18 +131,27 @@ def handle_client(conn, addr):
             else: print("Error command") 
         except json.JSONDecodeError as e: print(f"Invalid JSON data: {e}") 
         except Exception as e: print(f"An error occurred: {e}") 
+    flag = False
     conn.close()
 
-# Khởi động server tracker
-def start_tracker():
-    SERVER = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def listen():
     SERVER.bind(('localhost', 5000))
     SERVER.listen()
     print("[TRACKER] Server started...")
-    while True:
+    global flag
+    while flag:
         conn, addr = SERVER.accept()
         thread = threading.Thread(target=handle_client, args=(conn, addr))
         thread.start()
+
+# Khởi động server tracker
+def start_tracker():
+    t = threading.Thread(target=listen, args=())
+    t.start()
+    if input().strip().upper() == "end":
+        global flag
+        flag = False
+    t.join()
 
 if __name__ == "__main__":
     start_tracker()
